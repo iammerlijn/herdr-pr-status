@@ -38,14 +38,23 @@ const run = (cmd, args, opts) => exec(cmd, args, opts).catch(() => ({ code: -1, 
 // The GitHub repo of a folder ("owner/name") and its default branch, which has no PR
 // of its own. Kept per folder once found.
 const repos = new Map();
+// "owner/name" of a remote whose host is exactly github.com: a URL
+// (https://github.com/o/n.git, ssh://git@github.com/o/n) or the SCP form git@github.com:o/n.git.
+const GITHUB = [
+  /^(?:https?|ssh|git):\/\/(?:[^@/]+@)?github\.com(?::\d+)?\/([^/]+\/[^/]+?)(?:\.git)?\/?$/i,
+  /^(?:[^@/:]+@)?github\.com:([^/]+\/[^/]+?)(?:\.git)?$/i,
+];
+const githubName = (remote) => GITHUB.map((re) => remote.match(re)?.[1]).find(Boolean);
 async function repoOf(cwd, on) {
   const key = `${on ?? ""}\n${cwd}`;
   if (repos.has(key)) return repos.get(key);
   const url = await run("git", ["-C", cwd, "remote", "get-url", "origin"], { on });
-  const name = url.code === 0 && url.stdout.trim().match(/github\.com[:/](.+?)(?:\.git)?$/)?.[1];
+  const name = url.code === 0 && githubName(url.stdout.trim());
   if (!name) return null;
   const head = await run("git", ["-C", cwd, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"], { on });
-  const repo = { name, base: head.stdout.trim().replace(/^origin\//, "") };
+  const base = head.code === 0 && head.stdout.trim().match(/^origin\/(.+)$/)?.[1];
+  if (!base) return null;
+  const repo = { name, base };
   repos.set(key, repo);
   return repo;
 }
