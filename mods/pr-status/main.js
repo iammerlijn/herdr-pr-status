@@ -1,26 +1,24 @@
-// PR status: for each space, the pull request of the git branch its terminals
-// are on, as one icon. Shared as shared("pr-status") = { [space id]: { icon, color, url } }
+// PR status: for each space, the pull request of the git branch its terminal
+// panes are on, as one icon. Shared as shared("pr-status") = { [space id]: { icon, color } }
 // (icon: an SVG file for svg()). A sidebar mod draws it (see space-folders).
 // Needs `gh`, logged in, on this computer.
 import { View, div } from "gpui-kit";
-import { spaces, panes, exec, setShared, appHome } from "herdr";
-import * as fs from "fs/promises";
+import { spaces, panes, exec, setShared, checking } from "herdr";
 
 const EVERY = 120000;
 
 // A space with more than one PR shows the first state here that it has.
-// Icons: GitHub Octicons (MIT, github.com/primer/octicons), 16 px. Colors: GitHub's dark theme.
+// Icons: GitHub Octicons (MIT, github.com/primer/octicons), 16 px, in icons/<state>.svg.
+// Colors: GitHub's dark theme.
 const STATES = [
-  { state: "failing", color: "#f85149", path: "M2.343 13.657A8 8 0 1 1 13.658 2.343 8 8 0 0 1 2.343 13.657ZM6.03 4.97a.751.751 0 0 0-1.042.018.751.751 0 0 0-.018 1.042L6.94 8 4.97 9.97a.749.749 0 0 0 .326 1.275.749.749 0 0 0 .734-.215L8 9.06l1.97 1.97a.749.749 0 0 0 1.275-.326.749.749 0 0 0-.215-.734L9.06 8l1.97-1.97a.749.749 0 0 0-.326-1.275.749.749 0 0 0-.734.215L8 6.94Z" },
-  { state: "draft", color: "#9198a1", path: "M3.25 1A2.25 2.25 0 0 1 4 5.372v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.251 2.251 0 0 1 3.25 1Zm9.5 14a2.25 2.25 0 1 1 0-4.5 2.25 2.25 0 0 1 0 4.5ZM2.5 3.25a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0ZM3.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm9.5 0a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM14 7.5a1.25 1.25 0 1 1-2.5 0 1.25 1.25 0 0 1 2.5 0Zm0-4.25a1.25 1.25 0 1 1-2.5 0 1.25 1.25 0 0 1 2.5 0Z" },
-  { state: "open", color: "#3fb950", path: "M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z" },
-  { state: "approved", color: "#3fb950", path: "M8 16A8 8 0 1 1 8 0a8 8 0 0 1 0 16Zm3.78-9.72a.751.751 0 0 0-.018-1.042.751.751 0 0 0-1.042-.018L6.75 9.19 5.28 7.72a.751.751 0 0 0-1.042.018.751.751 0 0 0-.018 1.042l2 2a.75.75 0 0 0 1.06 0Z" },
-  { state: "merged", color: "#ab7df8", path: "M5.45 5.154A4.25 4.25 0 0 0 9.25 7.5h1.378a2.251 2.251 0 1 1 0 1.5H9.25A5.734 5.734 0 0 1 5 7.123v3.505a2.25 2.25 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.95-.218ZM4.25 13.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm8.5-4.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5ZM5 3.25a.75.75 0 1 0 0 .005V3.25Z" },
-  { state: "closed", color: "#f85149", path: "M3.25 1A2.25 2.25 0 0 1 4 5.372v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.251 2.251 0 0 1 3.25 1Zm9.5 5.5a.75.75 0 0 1 .75.75v3.378a2.251 2.251 0 1 1-1.5 0V7.25a.75.75 0 0 1 .75-.75Zm-2.03-5.273a.75.75 0 0 1 1.06 0l.97.97.97-.97a.748.748 0 0 1 1.265.332.75.75 0 0 1-.205.729l-.97.97.97.97a.751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018l-.97-.97-.97.97a.749.749 0 0 1-1.275-.326.749.749 0 0 1 .215-.734l.97-.97-.97-.97a.75.75 0 0 1 0-1.06ZM2.5 3.25a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0ZM3.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm9.5 0a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z" },
+  { state: "failing", color: "#f85149" },
+  { state: "draft", color: "#9198a1" },
+  { state: "open", color: "#3fb950" },
+  { state: "approved", color: "#3fb950" },
+  { state: "merged", color: "#ab7df8" },
+  { state: "closed", color: "#f85149" },
 ];
-// Herdr draws images only from real folders, and this mod's folder can be a link:
-// the icons go to the app's data folder.
-const ICONS = "data/pr-status";
+const ICONS = "mods/pr-status/icons";
 const FAILED = new Set(["FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE"]);
 
 function stateOf(pr) {
@@ -35,63 +33,76 @@ function stateOf(pr) {
 // no `gh`) counts as an exit code too.
 const run = (cmd, args, opts) => exec(cmd, args, opts).catch(() => ({ code: -1, stdout: "" }));
 
-// The GitHub repo of a folder ("owner/name") and its default branch, which has no PR
-// of its own. Kept per folder once found.
-const repos = new Map();
-// "owner/name" of a remote whose host is exactly github.com: a URL
-// (https://github.com/o/n.git, ssh://git@github.com/o/n) or the SCP form git@github.com:o/n.git.
-const GITHUB = [
-  /^(?:https?|ssh|git):\/\/(?:[^@/]+@)?github\.com(?::\d+)?\/([^/]+\/[^/]+?)(?:\.git)?\/?$/i,
-  /^(?:[^@/:]+@)?github\.com:([^/]+\/[^/]+?)(?:\.git)?$/i,
+// The hosts `gh` is logged in to: github.com and GitHub Enterprise hosts. Kept once found
+// (one look at a time); without an answer (no `gh`, an old `gh`) only github.com, and the
+// next check asks again.
+let hosts = null;
+function ghHosts() {
+  hosts ??= run("gh", ["auth", "status", "--json", "hosts"]).then((r) => {
+    try { return new Set(Object.keys(JSON.parse(r.stdout).hosts).map((h) => h.toLowerCase())); }
+    catch { hosts = null; return new Set(["github.com"]); }
+  });
+  return hosts;
+}
+
+// Host and "owner/name" of a remote: a URL (https://host/o/n.git, ssh://git@host:22/o/n)
+// or the SCP form git@host:o/n.git.
+const REMOTE = [
+  /^(?:https?|ssh|git):\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/([^/]+\/[^/]+?)(?:\.git)?\/?$/i,
+  /^(?:[^@/:]+@)?([^/:]+):([^/]+\/[^/]+?)(?:\.git)?$/i,
 ];
-const githubName = (remote) => GITHUB.map((re) => remote.match(re)?.[1]).find(Boolean);
-async function repoOf(cwd, on) {
+const parseRemote = (remote) => REMOTE.map((re) => remote.match(re)).find(Boolean);
+
+// The GitHub repo of a folder ("host/owner/name", for `gh -R`) and its default branch,
+// which has no PR of its own. Kept per folder once found; a failure is tried again
+// at the next check. Folders that look at the same time share one look.
+const repos = new Map();
+function repoOf(cwd, on) {
   const key = `${on ?? ""}\n${cwd}`;
-  if (repos.has(key)) return repos.get(key);
+  if (!repos.has(key)) repos.set(key, findRepo(cwd, on).then((repo) => (repo || repos.delete(key), repo)));
+  return repos.get(key);
+}
+async function findRepo(cwd, on) {
   const url = await run("git", ["-C", cwd, "remote", "get-url", "origin"], { on });
-  const name = url.code === 0 && githubName(url.stdout.trim());
-  if (!name) return null;
+  const m = url.code === 0 && parseRemote(url.stdout.trim());
+  if (!m || !(await ghHosts()).has(m[1].toLowerCase())) return null;
   const head = await run("git", ["-C", cwd, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"], { on });
   const base = head.code === 0 && head.stdout.trim().match(/^origin\/(.+)$/)?.[1];
   if (!base) return null;
-  const repo = { name, base };
-  repos.set(key, repo);
-  return repo;
+  return { name: `${m[1].toLowerCase()}/${m[2]}`, base };
 }
 
 async function prOf(repo, branch) {
-  const r = await run("gh", ["pr", "view", branch, "-R", repo, "--json", "state,isDraft,reviewDecision,statusCheckRollup,url"]);
+  const r = await run("gh", ["pr", "view", branch, "-R", repo, "--json", "state,isDraft,reviewDecision,statusCheckRollup"]);
   try { return r.code === 0 ? JSON.parse(r.stdout) : null; } catch { return null; }
 }
 
-async function writeIcons() {
-  await fs.mkdir(`${appHome()}/${ICONS}`, { recursive: true });
-  await Promise.all(STATES.map(({ state, path }) =>
-    fs.writeFile(`${appHome()}/${ICONS}/${state}.svg`, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor"><path d="${path}"/></svg>`)));
-}
-
-// The icon of one space: the PRs of the branches its terminals are on.
-async function statusOf(space, ps) {
+// The icon of one space: the PRs of the branches its terminal panes are on.
+// `prs`: the PR look of each repo and branch in this check, shared by all spaces.
+async function statusOf(space, ps, prs) {
   const tabs = new Set(space.tabs.map((t) => t.id));
   const folders = new Map(ps.filter((p) => p.branch && p.cwd && tabs.has(p.tab)).map((p) => [p.cwd, p.branch]));
   const found = await Promise.all([...folders].map(async ([cwd, branch]) => {
     const repo = await repoOf(cwd, space.machine);
-    const pr = repo && repo.base !== branch ? await prOf(repo.name, branch) : null;
-    return pr && { state: stateOf(pr), url: pr.url };
+    if (!repo || repo.base === branch) return null;
+    const key = `${repo.name}\n${branch}`;
+    if (!prs.has(key)) prs.set(key, prOf(repo.name, branch));
+    const pr = await prs.get(key);
+    return pr && stateOf(pr);
   }));
-  const shown = STATES.find((x) => found.some((f) => f?.state === x.state));
-  return shown && { icon: `${ICONS}/${shown.state}.svg`, color: shown.color, url: found.find((f) => f?.state === shown.state).url };
+  const shown = STATES.find((x) => found.includes(x.state));
+  return shown && { icon: `${ICONS}/${shown.state}.svg`, color: shown.color };
 }
 
 async function statuses() {
-  const all = spaces(), ps = panes();
-  const icons = await Promise.all(all.map((s) => statusOf(s, ps)));
+  const all = spaces(), ps = panes(), prs = new Map();
+  const icons = await Promise.all(all.map((s) => statusOf(s, ps, prs)));
   return Object.fromEntries(all.map((s, i) => [s.id, icons[i]]).filter(([, icon]) => icon));
 }
 
 export default class PrStatus extends View {
   init(_props, cx) {
-    this.icons = writeIcons();
+    if (checking()) return;
     this.refresh(cx);
     cx.timer.every(EVERY, (cx) => this.refresh(cx));
   }
@@ -101,7 +112,6 @@ export default class PrStatus extends View {
     this.busy = true;
     cx.spawn(async () => {
       try {
-        await this.icons;
         setShared("pr-status", await statuses());
       } finally { this.busy = false; }
     });

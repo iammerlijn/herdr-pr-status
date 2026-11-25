@@ -6,9 +6,11 @@ The pull request status of each space as a GitHub icon in the spaces list of the
 
 ![One icon per space: the pull request of the branch it is on](icons.png)
 
-- **From the branch, nothing else.** The mod reads the git branch of each terminal in a space, on this computer and on other machines. It works with any GitHub repo and any issue tracker.
+- **From the branch, nothing else.** The mod reads the git branch of each terminal pane in a space, on this computer and on other machines. It works with any repo on GitHub or GitHub Enterprise, and with any issue tracker.
 - **One icon per space.** A space with more than one PR (a backend and a frontend repo, for example) shows the most urgent one.
-- **Nothing to set up.** It uses `gh`, logged in on this computer. There are no settings, and the mod stores nothing but its icons.
+- **Nothing to set up.** It uses `gh`, logged in on this computer. There are no settings. The mod keeps only an icon and a color per space, in Herdr's `shared.json`.
+
+- **GitHub only.** The mod supports github.com and GitHub Enterprise hosts that `gh` is logged in to. It does not support GitLab, Bitbucket, Gitea, Azure DevOps or other hosts: a folder with an `origin` there gets no icon.
 
 ![The spaces list with a PR icon on each space](preview.png)
 
@@ -25,7 +27,7 @@ A space with more than one PR shows the first state in this table.
 
 ## Install
 
-You need [`gh`](https://cli.github.com), logged in (`gh auth status`).
+You need [`gh`](https://cli.github.com), logged in (`gh auth status`). For GitHub Enterprise, log in to that host too: `gh auth login --hostname <host>`. An old `gh` without `gh auth status --json` gives icons only for github.com.
 
 ```sh
 git clone https://github.com/iammerlijn/herdr-pr-status.git
@@ -63,17 +65,19 @@ Check: `herdr-app check ~/.config/herdr-app/mods/pr-status`. An AI agent can ins
 
 Every 2 minutes, for each space:
 
-1. Each terminal in the space gives its live folder and git branch (from Herdr). Terminals that are not in a git repo are skipped.
-2. `git remote get-url origin` and `git symbolic-ref refs/remotes/origin/HEAD`, on the space's machine, give the GitHub repo and its default branch. A terminal on the default branch is skipped. The repo of a folder is kept after the first look.
-3. `gh pr view <branch> -R <owner/repo> --json …`, on this computer, gives the PR.
+1. Each terminal pane in the space gives its live folder and git branch (from Herdr). A terminal that is not in a pane does not count. Panes that are not in a git repo are skipped.
+2. `git remote get-url origin` and `git symbolic-ref refs/remotes/origin/HEAD`, on the space's machine, give the repo and its default branch. The host of `origin` must be one that `gh auth status` shows (github.com or a GitHub Enterprise host); other folders are skipped. A pane on the default branch is skipped. The repo of a folder is kept after the first look.
+3. `gh pr view <branch> -R <host/owner/repo> --json …`, on this computer, gives the PR. Spaces on the same repo and branch share one look.
 
 All spaces and folders are checked at the same time. Commands run without a shell: the branch and the folder go only as arguments. A machine that is offline, a missing `gh` or an answer that isn't JSON gives no icon, and the next check tries again.
 
-The mod shares the result as `shared("pr-status")`: `{ [space id]: { icon, color, url } }`. A mod can't draw in another mod's block, so the spaces list draws it. Herdr draws images only from real folders, and a mod folder is often a link to its git checkout, so the mod writes its 6 icons to `~/.config/herdr-app/data/pr-status/` when it starts.
+The mod shares the result as `shared("pr-status")`: `{ [space id]: { icon, color } }`. A mod can't draw in another mod's block, so the spaces list draws it. The 6 icons are SVG files in `mods/pr-status/icons/`.
 
 ## Good to know
 
 - The icon can take up to 2 minutes to change after a terminal changes branch, or after the PR changes on GitHub.
+- The mod reads the list of `gh` hosts once. After you log in to a new host, reload the mod.
+- A GitHub Enterprise `origin` must use the real host name. An SSH alias from `~/.ssh/config` (`git@work:owner/repo`) is not a host that `gh` knows, so it gets no icon.
 - Only the terminals' own folders count. A program that works in another folder (an agent in a worktree, for example) doesn't change the branch of its terminal.
 - Herdr doesn't reload a mod from a linked folder when a file changes: copy it, or give its block another `id` in the layout.
 
